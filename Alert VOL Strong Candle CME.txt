@@ -1,0 +1,199 @@
+//@version=5
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © godfather
+// update vwap
+
+indicator('Alert VOL Strong Candle CME', shorttitle='Alert VOL Strong Candle CME', overlay=true,  format=format.price, precision=2, max_boxes_count=500, max_bars_back=500, max_lines_count=500, max_labels_count = 500)
+
+
+MaxLabel=input.int(title="Số Nến Hiện Tín Hiệu", defval=100, minval=5, maxval=10000, step=1) 
+
+
+groupVolume = '📈 Cấu Hình Thông Số Đầu Vào Cho Volume CME 📉'
+showBarcolorVol = input.bool(defval=true, title="Hiện Màu Nến Vol Bất Thường" , group = groupVolume)
+adaptive        = input.string(title="Market Type ", options=["AUTO", "OTHERS"], defval="AUTO", group = groupVolume)
+symbol_manual   = input.symbol(defval="COMEX_DL:GC1!", group = groupVolume)
+
+sCode1 =
+	     syminfo.root == "XAUUSD" ? "COMEX_DL:GC1!" :
+	     syminfo.root == "AUDUSD" ? "CME_DL:6A1!" :
+	     syminfo.root == "USDCAD" ? "CME_DL:6C1!" :
+	     syminfo.root == "GBPUSD" ? "CME_DL:6B1!" :
+	     syminfo.root == "EURUSD" ? "CME_DL:6E1!" :
+	     syminfo.root == "USDJPY" ? "CME_DL:6J1!" :
+	     syminfo.root == "USDCHF" ? "CME_DL:6S1!" : 
+		 syminfo.root == "NZDUSD" ? "CME_DL:6N1!" : 
+         syminfo.root == "BTCUSDT" ? "CME_DL:BTC1!" :
+         syminfo.root == "ETHUSDT" ? "CME_DL:ETH1!" :  
+         syminfo.root == "XAGUSD" ? "COMEX_DL:SI1!" :
+         syminfo.root == "US30" ? "CBOT_MINI_DL:YM1!" :  
+         ""
+
+float _volume = na
+string code_futures = na
+
+if (adaptive=="AUTO" and sCode1 != "")
+    code_futures := sCode1
+else
+    code_futures := ""
+
+volFuture = request.security(code_futures, timeframe.period, volume, lookahead=barmerge.lookahead_on)  
+
+if (adaptive=="AUTO" and code_futures != "" )
+    _volume:=  volFuture
+if (adaptive=="OTHERS" or code_futures == "")
+    _volume:=  volume
+
+//showMA = input(defval=false, title='Show Volume Moving Average')
+lengthVolumeMA = input(defval=20, title='Length of MA applied on Volume', group = groupVolume)
+ratioUltraVolume = input(defval=2.2, title='Ultra High Volume Ratio', group = groupVolume)
+ratioVeryHighVolume = input(defval=1.8, title='Very High Volume Ratio', group = groupVolume)
+ratioHighVolume = input(defval=1.2, title='High Volume Ratio', group = groupVolume)
+ratioNormalVolume = input(defval=0.8, title='Normal Volume Ratio', group = groupVolume)
+ratioLowVolume = input(defval=0.4, title='Low Volume Ratio', group = groupVolume)
+ratioVeryLowVolume = input(defval=0.4, title='Very Low Volume Ratio', group = groupVolume)
+
+
+// WILDERS MA
+float volumeMA = 0
+volumeMA := nz(volumeMA[1]) + (_volume - nz(volumeMA[1])) / lengthVolumeMA
+float volumeMA_default = 0
+volumeMA_default := nz(volumeMA_default[1]) + (volume - nz(volumeMA_default[1])) / lengthVolumeMA
+
+ultraHighVolumeMin = volumeMA * ratioUltraVolume
+veryHighVolumeMin = volumeMA * ratioVeryHighVolume
+
+ultraHighVolumeMin_default = volumeMA_default * ratioUltraVolume
+veryHighVolumeMin_default = volumeMA_default * ratioVeryHighVolume
+
+highVolumeMin = volumeMA * ratioHighVolume
+normalVolumeMin = volumeMA * ratioNormalVolume
+lowVolumeMin = volumeMA * ratioLowVolume
+veryLowVolumeMin = volumeMA * ratioVeryLowVolume
+
+
+volUltraHigh = _volume >= ultraHighVolumeMin ? true : false
+volVeryHigh = _volume >= veryHighVolumeMin and _volume < ultraHighVolumeMin ? true : false
+
+volUltraHigh_default = volume >= ultraHighVolumeMin_default ? true : false
+volVeryHigh_default = volume >=  veryHighVolumeMin_default and volume < ultraHighVolumeMin_default ? true : false
+
+volHigh = _volume >= highVolumeMin and _volume < veryHighVolumeMin ? true : false
+volNormal = _volume >= normalVolumeMin and _volume < highVolumeMin ? true : false
+volLow = _volume >= lowVolumeMin and _volume < normalVolumeMin ? true : false
+volVeryLow = _volume < lowVolumeMin ? true : false
+
+// ... (existing code from the linked script)
+
+// Determine bullish and bearish candles
+isBullish = close > open
+isBearish = close < open
+
+// Set candle color based on conditions
+//barcolor(volUltraHigh and isBullish ? color.rgb(6, 114, 96) : volUltraHigh and isBearish ? color.red : na)
+//barcolor(volVeryHigh and isBullish ? color.rgb(125, 199, 127) : volVeryHigh and isBearish ? color.rgb(221, 161, 161) : na)
+barcolor(showBarcolorVol  and volUltraHigh and isBullish ? color.rgb(23, 109, 41)  : showBarcolorVol  and volUltraHigh and isBearish? color.rgb(173, 20, 20)  : na)
+barcolor(showBarcolorVol  and volVeryHigh and isBullish  ? color.rgb(173, 218, 183) : showBarcolorVol  and volVeryHigh and isBearish  ? color.rgb(236, 128, 128) :  na)
+
+
+
+//========================================Begin Flase Break - TRAP============================================
+groupTrap = '📈 Cấu Hình Signal Trap 📉'
+bool showTrap = input(false, 'Hiện Signal TRAP', group = groupTrap)
+lookbackTRAP=input.int(title="Kiểm Tra Bao Nhiêu Cây Nến", defval=3, minval=1, maxval=10, step=1, group = groupTrap)
+bool showSignalUltra = input(true, 'Get Break Vol Ultra', group = groupTrap)
+bool showSignalVery = input(false, 'Get Break Vol Very', group = groupTrap)
+bool alertTrap = input(true, 'Thông Báo Tín Hiệu', group = groupTrap)
+
+//=======================
+bool firstTrapSell = false
+var highTrapSell = high
+//=================================
+bool firstTrapBuy = false
+var lowTrapBuy = low
+
+////////////////////////////////////////////////////////////////Code Sell
+
+for ii = 1 to lookbackTRAP by 1
+    //Tìm thấy tín hiệu trước đó bỏ qua
+    // if(firstTrapBuy[ii])
+    //     lowTrapBuy := low
+    //     break
+
+    //Kill vol ultra high
+    if(showSignalUltra and volUltraHigh[ii])
+        lowTrapBuy :=low[ii]
+        break
+    else
+        lowTrapBuy := low
+
+    //Kill vol very ultra
+    if(showSignalVery  and volVeryHigh[ii])
+        lowTrapBuy :=low[ii]
+        break
+    else
+        lowTrapBuy := low
+       
+
+
+trapBuy = ta.crossunder(close, lowTrapBuy)
+
+if(volUltraHigh or volVeryHigh)
+    trapBuy := false    
+
+
+if last_bar_index - bar_index < MaxLabel
+    if(showTrap and trapBuy)
+        label.new(bar_index, high, text="", yloc = yloc.abovebar, style=label.style_label_down, textcolor=color.white, size=size.tiny, color=color.rgb(204, 169, 13))
+firstTrapBuy := trapBuy
+//plotshape(trapBuy , title="Sell False Break signal", style=shape.labeldown, size=size.small, color=color.rgb(218, 169, 8), location= location.abovebar, text="T", textcolor=color.white) 
+
+////////////////////////////////////////////////////////////////Code Buy
+
+for ii = 1 to lookbackTRAP by 1
+    //Tìm thấy tín hiệu trước đó bỏ qua
+    // if(firstTrapSell[ii])
+    //     highTrapSell := high
+    //     break
+
+    //Vol ultra high bị kill
+    if(showSignalUltra   and volUltraHigh[ii])
+        highTrapSell :=high[ii]
+        break
+    else
+        highTrapSell := high
+    
+    //Vol very high bị kill
+    if(showSignalVery   and volVeryHigh[ii])
+        highTrapSell :=high[ii]
+        break
+    else
+        highTrapSell := high
+    
+
+trapSell = ta.crossover(close, highTrapSell)
+
+if(volUltraHigh or volVeryHigh)
+    trapSell := false  
+
+
+if last_bar_index - bar_index < MaxLabel
+    if(showTrap and trapSell)
+        label.new(bar_index, low, text="", yloc = yloc.belowbar, style=label.style_label_up, textcolor=color.white, size=size.tiny, color=color.rgb(28, 169, 204))
+firstTrapSell := trapSell
+//plotshape(_showTrapEntrytime and showTrap  and trapSell , title="Buy False Break signal", style=shape.labelup, size=size.small, color=color.rgb(28, 169, 204), location= location.belowbar, text="T", textcolor=color.white) 
+
+checkForAlert(trapBuy, trapSell)=>
+    alertMsg = ""
+    if (trapBuy)
+        alertMsg += str.format("Canh Sell {0} M{1} !\n", syminfo.tickerid,timeframe.period)
+    if (trapSell)
+        alertMsg += str.format("Canh Buy {0} M{1} !\n", syminfo.tickerid,timeframe.period)
+    alertMsg
+
+if(alertTrap and showSignalUltra or alertTrap and showSignalVery)
+    // if(EntryTimePhienA or EntryTimePhienAu or EntryTimePhienMy)
+    msg = checkForAlert(trapBuy, trapSell)
+    if str.length(msg) > 0
+        alert(msg, alert.freq_once_per_bar_close)
+//=============================================================================End Begin Flase Break IB - TRAP====================================================================
